@@ -6,6 +6,11 @@ export const CHECKBOX_REGEX =     /^(\s*)-\s+\[(.)\].*$/m;
 export const UNCHECKEDBOX_REGEX = /^\s*-\s+\[[^xX]\].*$/m;
 export const CHECKEDBOX_REGEX =   /^\s*-\s+\[[xX]\].*$/m;
 
+// Extended checkbox support for bujo-bullets and other alternative formats
+export const BUJO_CHECKBOX_REGEX = /^(\s*)-\s+\[([xX\-><o ])\].*$/m;
+export const BUJO_UNCHECKED_REGEX = /^\s*-\s+\[[ \-><o]\].*$/m;
+export const BUJO_CHECKED_REGEX = /^\s*-\s+\[[xX]\].*$/m;
+
 // https://regex101.com/r/adwhVh/1
 export const OBLIGATION_REGEX = /^\s*{{\s*obligate\s+([\*\-,\d]+)\s+([\*\-,\d]+)\s+([\*\-,\d]+)\s*}}\s*$/;
 
@@ -17,11 +22,28 @@ export function get_heading_level(heading:string|null) {
 }
 
 export function get_checkbox_level(checkbox:string|null) {
-	if (checkbox && CHECKBOX_REGEX.test(checkbox)) {
+	if (checkbox && (CHECKBOX_REGEX.test(checkbox) || BUJO_CHECKBOX_REGEX.test(checkbox))) {
 		// This is offset by 1 so that the logic matches the heading logic
-		return checkbox.replace(CHECKBOX_REGEX, "$1").length + 1;
+		const match = checkbox.match(CHECKBOX_REGEX) || checkbox.match(BUJO_CHECKBOX_REGEX);
+		return match ? match[1].length + 1 : 0;
 	}
 	return 0;
+}
+
+// Helper function to determine if a line is any type of checkbox (standard or bujo)
+export function is_checkbox(line: string): boolean {
+	return CHECKBOX_REGEX.test(line) || BUJO_CHECKBOX_REGEX.test(line);
+}
+
+// Helper function to determine if a checkbox is completed (checked)
+export function is_checked_checkbox(line: string): boolean {
+	return CHECKEDBOX_REGEX.test(line) || BUJO_CHECKED_REGEX.test(line);
+}
+
+// Helper function to determine if a checkbox is unchecked/incomplete
+export function is_unchecked_checkbox(line: string): boolean {
+	return (CHECKBOX_REGEX.test(line) || BUJO_CHECKBOX_REGEX.test(line)) && 
+		   !(CHECKEDBOX_REGEX.test(line) || BUJO_CHECKED_REGEX.test(line));
 }
 
 interface Parent {
@@ -40,11 +62,11 @@ export function structurize(lines:string[], text:string|null=null):Parent {
 	for (let i = 0; i < lines.length; i++) {
 		const line = lines[i];
 		const is_heading = HEADING_REGEX.test(line);
-		const is_checkbox = CHECKBOX_REGEX.test(line);
+		const is_checkbox_line = is_checkbox(line);
 
 		// A heading cannot be the child of a checkbox. text is checked here
 		// because it can be null when invoked
-		if (is_heading && text && CHECKBOX_REGEX.test(text)) {
+		if (is_heading && text && is_checkbox(text)) {
 			break;
 		}
 
@@ -54,13 +76,13 @@ export function structurize(lines:string[], text:string|null=null):Parent {
 		if (is_heading && get_heading_level(line) <= parent_heading_level) {
 			break;
 		}
-		if (is_checkbox && get_checkbox_level(line) <= parent_checkbox_level) {
+		if (is_checkbox_line && get_checkbox_level(line) <= parent_checkbox_level) {
 			break;
 		}
 
 		// If this is a foldable, then we do the recursive step, otherwise we
 		// can simply add the child to the list of children
-		if (is_heading || is_checkbox) {
+		if (is_heading || is_checkbox_line) {
 			const child = structurize(lines.slice(i+1), line);
 			children.push(child);
 			i += child.total;
@@ -117,7 +139,7 @@ export function merge_structure (first:Parent, second:Parent) {
 				merge_structure(first_child, child);
 				first.total += first_child.total-old_total;
 			} else {
-				if (child.text && CHECKBOX_REGEX.test(child.text)) {
+				if (child.text && is_checkbox(child.text)) {
 					const heading_index = first.children.findIndex(c => c instanceof Object && c.text && HEADING_REGEX.test(c.text));
 					if (heading_index > -1) {
 						first.children.splice(heading_index, 0, child);
@@ -156,8 +178,8 @@ export function filter_structure(structure:Parent,
 
 			// child.text is checked here because it can be null when invoked.
 			if (child.text) {
-				if (CHECKBOX_REGEX.test(child.text)
-				&& !CHECKEDBOX_REGEX.test(child.text)
+				if (is_checkbox(child.text)
+				&& !is_checked_checkbox(child.text)
 				&& keep_until_parent_complete) {
 					// Here we have a non-checked checkbox and the setting is not
 					// to delete until everything is checked, so we should just
@@ -186,11 +208,11 @@ export function filter_structure(structure:Parent,
 					}
 				}
 				// Only delete checkedboxes if they have no unchecked children
-				if (CHECKEDBOX_REGEX.test(child.text)) {
+				if (is_checked_checkbox(child.text)) {
 					// Count the number of unchecked children
 					if (child.children.filter((element) => {
 						if (typeof element == "object" && element.text !== null) {
-							return CHECKBOX_REGEX.test(element.text) && !CHECKEDBOX_REGEX.test(element.text)
+							return is_checkbox(element.text) && !is_checked_checkbox(element.text)
 						}
 						return false
 					}).length === 0) {

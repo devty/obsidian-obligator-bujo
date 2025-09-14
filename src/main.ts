@@ -22,7 +22,9 @@ import {
 import {
 	HEADING_REGEX_GLOBAL,
 	OBLIGATION_REGEX,
-	CHECKEDBOX_REGEX,
+	is_checkbox,
+	is_checked_checkbox,
+	is_unchecked_checkbox,
 	structurize,
 	destructure,
 	merge_structure,
