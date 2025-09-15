@@ -9,6 +9,10 @@ reference if you want to.
 
 ![](example/preview.gif)
 
+# Obligator-BuJo
+
+Added support for BuJo Bullets (https://github.com/frankolson/obsidian-bujo-bullets)
+
 ## How to use Obligator
 
 Make sure you have fully filled out the settings page, then click the carrot
